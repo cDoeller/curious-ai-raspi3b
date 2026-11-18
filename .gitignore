@@ -1,0 +1,10 @@
+/media/
+/logs/
+/img-tst/
+/data/
+/tmp/
+
+.DS_Store
+._*
+__pycache__/
+*.py[cod]
