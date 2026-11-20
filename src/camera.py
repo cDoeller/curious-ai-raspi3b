@@ -7,9 +7,24 @@ gain = variable, fixed after calibration
 import subprocess
 import cv2
 import numpy as np
+from filesystem import get_today_date, get_now_timestamp, make_today_folder
 
 DEV = "/dev/video0"
 
+def initialize_camera():
+    camera = cv2.VideoCapture(DEV, cv2.CAP_V4L2)
+
+    if not camera.isOpened():
+            print(f"[CAMERA] [ERR] no camera device at {DEV}.")
+            camera.release()
+            return None
+
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    camera.set(cv2.CAP_PROP_FPS, 30)
+
+    print("[CAMERA] successfully initialized.")
+    return camera
 
 # Automatically collects all arguments from the function call
 # in a Python dictionary (dict) named ctrls
@@ -80,25 +95,11 @@ def calibrate_gain(camera, target_mean=120.0, exposure=150, wb_temp=4500,
     v4l2_set(gain=best)  # set final value
 
     if best == gain_min and mean > target_mean + 10:
-        print(f"WARNUNG: Selbst bei Gain {gain_min} ist das Bild zu hell "
-              f"(mean={mean:.1f}). Szene abdunkeln oder brightness/gamma senken.")
+        print("[CAMERA] [WARN] calibration at minimum gain.")
     if best == gain_max and mean < target_mean - 10:
-        print(f"WARNUNG: Selbst bei Gain {gain_max} ist das Bild zu dunkel "
-              f"(mean={mean:.1f}). Mehr Licht nötig.")
+        print("[CAMERA] [WARN] calibration at maximum gain")
 
-    return {"gain": best, "mean": mean, "clipped": clipped}
-
-def capture_image (camera, filename):
-    success, frame = camera.read()
- 
-    if success:
-        cv2.imwrite(filename, frame)
-        print("SUCCESS: Image saved")
-        print("Image shape:", frame.shape)
-        return 1
-    else:
-        print("ERROR: Could not capture image") 
-        return 0
+    return {"gain": best, "mean_brightness_gray": mean, "clipped": clipped, "exposure_ms": exposure, "wb_temp_K": wb_temp}
 
 def skip_frames (skip_amount=10):
     for _ in range (skip_amount):
@@ -110,7 +111,7 @@ def capture_n_images (camera, img_amount=10, step=1):
     frames = []
     n_failed = 0
 
-    for _ in range (img_amount):
+    for i in range (img_amount):
         # timing: caputre every step-frame (step=1 means every frame)
         for _ in range(step - 1):
             if not camera.grab():
@@ -120,43 +121,55 @@ def capture_n_images (camera, img_amount=10, step=1):
 
         if success:
             frames.append(frame)
-            print ("[CAMERA] image capture in sequence success.")
+            print (f"[CAMERA] image {i} capture in sequence success.")
         else:
             frames.append(None)
             n_failed += 1
             print ("[CAMERA] [ERR] image capture in image sequence failed.")
 
     if n_failed:
-        print(f"[CAMERA] [ERR] {n_failed}/{img_amount} Frames fehlgeschlagen.")
+        print(f"[CAMERA] [ERR] {n_failed}/{img_amount} frames failed in sequence.")
     else:
-        print(f"[CAMERA] {img_amount} Frames erfolgreich aufgenommen.")
+        print(f"[CAMERA] {img_amount} sequence frames successfully captured.")
 
     return frames
 
+def save_image_in_archive(frame):
+    filename = str(make_today_folder()) + "/" + get_now_timestamp()
+
+    success = cv2.imwrite(filename + ".jpg", frame)
+
+    if (success):
+        print ("[CAMERA] image saved in archive.")
+    else:
+        print ("[CAMERA] [ERR] error saving image.")
+
 
 if __name__ == "__main__":
-    camera = cv2.VideoCapture(DEV, cv2.CAP_V4L2)
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    camera.set(cv2.CAP_PROP_FPS, 30)
+    print ("[CAMERA] initializing camera..")
+    camera = initialize_camera()
 
     # calculate gain
+    print ("[CAMERA] starting calibration..")
     calibration = calibrate_gain(camera, target_mean=120)
-    print(calibration)
+    print("[CAMERA] calibration values ", calibration)
+    # SAVE CALIB VALS IN DB
 
     # set gain
+    print ("[CAMERA] setting gain and skipping frames..")
     v4l2_set(gain=calibration.get("gain"))
 
     # skip frames to adjust
     skip_frames()
 
     # capture n images every x frame
+    print ("[CAMERA] capturing frame sequence..")
     frame_sequence = capture_n_images (camera, step=2)
 
     # save test image last
-    filename = "/img-tst/image_seq_test__last_of_ten"
-    cv2.imwrite(filename, frame_sequence[-1])
-
+    print ("[CAMERA] saving last image..")
+    save_image_in_archive(frame_sequence[-1])
 
     # (kamera setzt hiernach evtl. zurück)
+    print ("[CAMERA] done.")
     camera.release()
