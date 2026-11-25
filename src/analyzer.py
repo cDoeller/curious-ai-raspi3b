@@ -166,7 +166,11 @@ def analyze_n_fields(
 
 # threshold ändert emfpindlichkeit, ggf anpassen bei höherem gain
 # Maske i gehört zu den Bildern i und i+1, anzahl masken = anzahl frames -1
-def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_kernel=(5, 5)):
+def create_motion_masks(
+        img_sequence, 
+        threshold=MOVEMENT_MASK_THRESH_DEF, 
+        blur_kernel=(5, 5)
+        ):
 
     # Check if enough images are available for frame differencing.
     if img_sequence is None or len(img_sequence) < 2:
@@ -222,7 +226,11 @@ def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_k
 # find connected white pixel spaces in movement masks and define bounding box
 # min_area allows for filtering out very small areas like pixel noise from high gain
 # result: list of motion regions (box, area) for each mask [[mask1],[mask2],[mask3]]
-def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF,  merge_distance=MOTION_MASK_MERGE_DISTANCE_DEF):
+def find_motion_regions(
+        motion_masks, 
+        min_area=MOTION_MASK_MIN_AREA_DEF,  
+        merge_distance=MOTION_MASK_MERGE_DISTANCE_DEF
+        ):
 
     all_regions = []
 
@@ -328,12 +336,16 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
             # flow[row, col, 0] = dx of this pixel, flow[row, col, 1] = dy.
             # The numbers are common default values for this function.
             flow = cv2.calcOpticalFlowFarneback(
-                crop_a, crop_b, None,
+                crop_a, 
+                crop_b, 
+                None,
                 0.5,  # pyramid scale
                 3,    # pyramid levels (helps with bigger movements)
                 15,   # window size (bigger = smoother, less detail)
                 3,    # iterations
-                5, 1.2, 0
+                5, 
+                1.2, 
+                0
             )
             # print ("flow result:" , flow)
 
@@ -342,8 +354,8 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
 
             # Too few moving pixels = no reliable result
             # helps agains noise / filters out small areas
-            if np.count_nonzero(moving) < 20:
-                continue
+            # if np.count_nonzero(moving) < 20:
+            #     continue
 
             # Mean of dx and dy over the moving pixels only
             dx = float(np.mean(flow[:, :, 0][moving]))
@@ -368,6 +380,9 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
         print(f"[ANALYZER] Image pair {i}: {len(pair_vectors)} vectors calculated.")
 
     return all_vectors
+
+
+
 
 def analyze_movement (img_sequence, step):
 
