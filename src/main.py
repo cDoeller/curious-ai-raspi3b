@@ -64,7 +64,7 @@ if __name__ == "__main__":
     timestamp=None)
 
     # retrieve observation from db
-    print ("[DATABASE] retrieving observation from DB..")
+    # print ("[DATABASE] retrieving observation from DB..")
 
-    retrieved_observation = database.get_observation(last_observation["observation_id"])
-    print (retrieved_observation)
+    # retrieved_observation = database.get_observation(last_observation["observation_id"])
+    # print (retrieved_observation)

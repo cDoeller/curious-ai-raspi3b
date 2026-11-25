@@ -1,15 +1,17 @@
 import cv2
 import numpy as np
 
-import camera, os
+import camera
+from filesystem import get_now_timestamp
 
-from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF
+from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF
 from database import get_observation
 
 # TODO 
 # tell agent rounding params and params of data
 # agent has to reverse engineer the id of each cell in spatial analysis
 # movement vector: relative Bewegungsanalyse innerhalb einer Bildsequenz!
+# save ephemeral images (movement: masks, bounding boxes / edges,  )
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -212,6 +214,51 @@ def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_k
     return motion_masks
 
 
+# find connected white pixel spaces in movement masks and define bounding box
+# min_area allows for filtering out very small areas like pixel noise from high gain
+def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF):
+
+    all_regions = []
+
+    for i, mask in enumerate(motion_masks):
+
+        # Find connected external contours in the binary motion mask.
+        contours, _ = cv2.findContours(
+            mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        regions = []
+
+        for contour in contours:
+
+            # Calculate the contour area in pixels.
+            area = cv2.contourArea(contour)
+
+            # Ignore regions smaller than the configured minimum.
+            if area < min_area:
+                continue
+
+            # Get bounding box coordinates.
+            x, y, width, height = cv2.boundingRect(contour)
+
+            regions.append({
+                "bbox": [x, y, width, height],
+                "area": area
+            })
+
+        all_regions.append(regions)
+
+        print(
+            f"[ANALYZER] Image pair {i}: "
+            f"{len(regions)} motion regions detected."
+        )
+
+    return all_regions
+
+
+
 def analyze_movement (img_sequence, step):
 
     return 
@@ -266,19 +313,49 @@ if __name__ == "__main__":
     print("[ANALYZER] Creating motion masks...")
 
     motion_masks = create_motion_masks(frame_sequence)
+    # print ("motion masks: ", motion_masks)  
 
-    # Save masks for visual inspection.
-    os.makedirs("tmp", exist_ok=True)
+    motion_regions = find_motion_regions(motion_masks)
+    print ("motion regions: ", motion_regions)
 
-    for i, mask in enumerate(motion_masks):
+    # string for filename
+    now_time_string = get_now_timestamp()
 
-        image_path = f"tmp/motion_mask_{i}.jpg"
+    # if motion_regions are not empty like [[],[]]
+    if any(motion_regions):
+        # save motion masks
+        for i, mask in enumerate(motion_masks):
+            image_path = f"img-tst/motion_mask_{now_time_string}_{i}.jpg"
+            print (image_path)
 
-        success = cv2.imwrite(image_path, mask)
+            success = cv2.imwrite(image_path, mask)
 
-        if success:
+            if success:
+                print(f"[ANALYZER] Saved: {image_path}")
+            else:
+                print(f"[ANALYZER] [ERR] Could not save: {image_path}")
+
+        print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
+
+        # save og-imgs with bounding box of detected regions
+        for i, regions in enumerate(motion_regions):
+
+            img = frame_sequence[i].copy()
+
+            for region in regions:
+
+                x, y, width, height = region["bbox"]
+
+                cv2.rectangle(
+                    img,
+                    (x, y),
+                    (x + width, y + height),
+                    (255,255,255),
+                    1
+                )
+
+            image_path = f"img-tst/motion_bbox_{now_time_string}_{i}.jpg"
+
+            cv2.imwrite(image_path, img)
+
             print(f"[ANALYZER] Saved: {image_path}")
-        else:
-            print(f"[ANALYZER] [ERR] Could not save: {image_path}")
-
-    print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
