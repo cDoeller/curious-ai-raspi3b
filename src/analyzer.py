@@ -1,10 +1,12 @@
 import cv2
 import numpy as np
+import math
+
 
 import camera
 from filesystem import get_now_timestamp
 
-from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF
+from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF, MOTION_MASK_MERGE_DISTANCE_DEF
 from database import get_observation
 
 # TODO 
@@ -163,6 +165,7 @@ def analyze_n_fields(
 # ==========================================
 
 # threshold ändert emfpindlichkeit, ggf anpassen bei höherem gain
+# Maske i gehört zu den Bildern i und i+1, anzahl masken = anzahl frames -1
 def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_kernel=(5, 5)):
 
     # Check if enough images are available for frame differencing.
@@ -180,11 +183,13 @@ def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_k
         # Skip failed camera captures.
         if img_a is None or img_b is None:
             print(f"[ANALYZER] [WARN] Skipping image pair {i}-{i+1}: missing image.")
+            motion_masks.append(None) # keep the position, so mask index == pair index
             continue
 
         # Check if both images have the same dimensions.
         if img_a.shape != img_b.shape:
             print(f"[ANALYZER] [WARN] Skipping image pair {i}-{i+1}: different dimensions.")
+            motion_masks.append(None)
             continue
 
         # Convert BGR images to grayscale.
@@ -216,15 +221,35 @@ def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_k
 
 # find connected white pixel spaces in movement masks and define bounding box
 # min_area allows for filtering out very small areas like pixel noise from high gain
-def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF):
+# result: list of motion regions (box, area) for each mask [[mask1],[mask2],[mask3]]
+def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF,  merge_distance=MOTION_MASK_MERGE_DISTANCE_DEF):
 
     all_regions = []
 
+    # The "brush": a square of white pixels.
+    # Bigger merge_distance = thicker brush = more areas grow together.
+    # Return a new array of given shape and type, filled with ones
+    # arg #1 = shape of the array, arg #2 = data type (unsigned int 8 bit (256 max))
+    kernel = np.ones((merge_distance, merge_distance), np.uint8)
+
     for i, mask in enumerate(motion_masks):
 
-        # Find connected external contours in the binary motion mask.
+        # make all white areas thicker, so areas that are
+        # close together touch each other and become one area.
+        # a pixel element is ‘1’ if atleast one pixel under the kernel is ‘1’.
+        thick_mask = cv2.dilate(mask, kernel)
+
+        # normal mask version
+        # Find connected external contours in the binary motion mask (white areas)
+        # contours, _ = cv2.findContours(
+        #     mask,
+        #     cv2.RETR_EXTERNAL,
+        #     cv2.CHAIN_APPROX_SIMPLE
+        # )
+
+        # dilate version
         contours, _ = cv2.findContours(
-            mask,
+            thick_mask,
             cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE
         )
@@ -233,7 +258,7 @@ def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF):
 
         for contour in contours:
 
-            # Calculate the contour area in pixels.
+            # Calculate the contour area in pixels. (square pixels)
             area = cv2.contourArea(contour)
 
             # Ignore regions smaller than the configured minimum.
@@ -257,7 +282,92 @@ def find_motion_regions(motion_masks, min_area=MOTION_MASK_MIN_AREA_DEF):
 
     return all_regions
 
+# optical flow: only the boxes of regions, only the white pixels of mask
+def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
 
+    all_vectors = []
+
+    for i, regions in enumerate(motion_regions):
+
+        # original images that belong to this region array / "regions calculation"
+        img_a = img_sequence[i]
+        img_b = img_sequence[i + 1]
+
+        # Skip failed camera captures and do not mess up index
+        if img_a is None or img_b is None:
+            all_vectors.append([])
+            continue
+
+        # grayscale images, slight blur against noise
+        gray_a = cv2.GaussianBlur(cv2.cvtColor(img_a, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+        gray_b = cv2.GaussianBlur(cv2.cvtColor(img_b, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+
+        # get the mask that belongs to this image pair
+        mask = motion_masks[i]  
+
+        pair_vectors = []
+
+        # loop through all regions in array of detected regions for this mask
+        for region in regions:
+
+            # destructure values from array
+            x, y, width, height = region["bbox"]
+
+            # Cut the box area out of both images and out of the mask
+            # Slicing: [row_start:row_end, col_start:col_end] -> y first, then x!
+            crop_a = gray_a[y:y + height, x:x + width]
+            crop_b = gray_b[y:y + height, x:x + width]
+            crop_mask = mask[y:y + height, x:x + width]
+
+            # Very small boxes are too small for the flow algorithm
+            # also helps agains noise!
+            if width < 32 and height < 32:
+                print(f"[ANALYZER] [WARN] Pair {i}: box {region['bbox']} too small for flow.")
+                continue
+
+            # flow[row, col, 0] = dx of this pixel, flow[row, col, 1] = dy.
+            # The numbers are common default values for this function.
+            flow = cv2.calcOpticalFlowFarneback(
+                crop_a, crop_b, None,
+                0.5,  # pyramid scale
+                3,    # pyramid levels (helps with bigger movements)
+                15,   # window size (bigger = smoother, less detail)
+                3,    # iterations
+                5, 1.2, 0
+            )
+            # print ("flow result:" , flow)
+
+            # get every pixel that is white in the motion mask
+            moving = crop_mask > 0
+
+            # Too few moving pixels = no reliable result
+            # helps agains noise / filters out small areas
+            if np.count_nonzero(moving) < 20:
+                continue
+
+            # Mean of dx and dy over the moving pixels only
+            dx = float(np.mean(flow[:, :, 0][moving]))
+            dy = float(np.mean(flow[:, :, 1][moving]))
+
+            # Length of the arrow (Pythagoras) and its direction in degrees.
+            # The y-axis of an image points DOWN, so a negative angle = moving up.
+            magnitude = math.sqrt(dx * dx + dy * dy)
+            angle = math.degrees(math.atan2(dy, dx))
+
+            pair_vectors.append({
+                "bbox": region["bbox"],
+                "vector": {
+                    "dx": round(dx, 2),
+                    "dy": round(dy, 2),
+                    "magnitude": round(magnitude, 2),
+                    "angle": round(angle, 1)
+                }
+            })
+
+        all_vectors.append(pair_vectors)
+        print(f"[ANALYZER] Image pair {i}: {len(pair_vectors)} vectors calculated.")
+
+    return all_vectors
 
 def analyze_movement (img_sequence, step):
 
@@ -317,6 +427,9 @@ if __name__ == "__main__":
 
     motion_regions = find_motion_regions(motion_masks)
     print ("motion regions: ", motion_regions)
+
+    motion_vectors = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
+    print("motion vectors: ", motion_vectors)
 
     # string for filename
     now_time_string = get_now_timestamp()
