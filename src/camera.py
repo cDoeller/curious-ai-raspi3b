@@ -4,6 +4,8 @@ import numpy as np
 
 from config import CAMERA_DEVICE, CAMERA_RES_W, CAMERA_RES_H, CAMERA_FPS, CAMERA_TARGET_BRIGHTNESS_DEF, CAMREA_FIXED_EXPOSURE_DEF, CAMERA_WB_TEMP_DEF, CAMERA_IMG_SEQU_AMT_DEF, CAMERA_IMG_SEQU_STEP_DEF
 
+# TODO Calibration not working properly when sunlight strong. 
+# maybe auto exposure enable and save vals, then change analysis blur based on vals?
 
 def initialize_camera():
     camera = cv2.VideoCapture(CAMERA_DEVICE, cv2.CAP_V4L2)
@@ -104,13 +106,14 @@ def calibrate_gain(camera, target_mean=CAMERA_TARGET_BRIGHTNESS_DEF, exposure=CA
             "exposure_ms": exposure, 
             "wb_temp_K": wb_temp}
 
-def skip_frames (skip_amount=10):
+def skip_frames (camera, skip_amount=10):
     for _ in range (skip_amount):
         camera.read()
 
 def capture_n_images (camera, img_amount=CAMERA_IMG_SEQU_AMT_DEF, step=CAMERA_IMG_SEQU_STEP_DEF):
+    # skip n frames to refresh camera
     print ("[CAMERA] skipping frames..")
-    skip_frames()
+    skip_frames(camera)
 
     print (f"[CAMERA] capturing {img_amount} frames..")
     camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # small buffer allows for most recent frame capture

@@ -1,9 +1,22 @@
 import cv2
 import numpy as np
 
-from config import HISTOGRAM_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF
+import camera, os
+
+from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF
 from database import get_observation
 
+# TODO 
+# tell agent rounding params and params of data
+# agent has to reverse engineer the id of each cell in spatial analysis
+# movement vector: relative Bewegungsanalyse innerhalb einer Bildsequenz!
+
+# ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+
+def round_histogram(histogram, decimals=HISTORGAM_ROUND_DECIMALS):
+    return [round(float(value), decimals) for value in histogram]
 
 # ==========================================
 # SINGLE IMAGE OVERALL ANALYSIS
@@ -67,7 +80,7 @@ def analyze_color_histogram(img, bins):
         # does not specify for a certain resolution
         values = values / values.sum()
 
-        histogram[name] = values.flatten().tolist()
+        histogram[name] = round_histogram(values.flatten())
 
     return histogram
 
@@ -81,9 +94,9 @@ def analyze_brightness_histogram(img, bins):
     # does not specify for a certain resolution
     histogram = histogram / histogram.sum()
 
-    return histogram.flatten().tolist()
+    return round_histogram(histogram.flatten())
 
-def analyze_single_image(img, histogram_bins=HISTOGRAM_BINS_DEF):
+def analyze_single_image(img, histogram_bins=HISTOGRAM_OVERALL_BINS_DEF):
     # Collect all single-image analysis results.
     analysis = {
         "saturation_normalized": analyze_saturation(img),
@@ -97,53 +110,110 @@ def analyze_single_image(img, histogram_bins=HISTOGRAM_BINS_DEF):
 # ==========================================
 # 4 x 4 SPATIAL METRICS ANALYSIS
 # ==========================================
-
-def analyze_n_fields(img, bins=HISTOGRAM_BINS_DEF, num_fields_rows=FIELDS_ROWS_DEF, num_fields_cols=FIELDS_COLS_DEF):
+def analyze_n_fields(
+    img,
+    bins=HISTOGRAM_FIELDS_BINS_DEF,
+    num_fields_rows=FIELDS_ROWS_DEF,
+    num_fields_cols=FIELDS_COLS_DEF
+):
     if num_fields_rows < 1 or num_fields_cols < 1:
         raise ValueError("Number of field rows and columns must be at least 1.")
-   
-    # Get the image dimensions. Unpacking.
+
+    # only info for size, not channel
     height, width = img.shape[:2]
 
-    # Store the analysis results for all fields.
     fields = []
 
-    # Iterate through all rows and columns.
     for row in range(num_fields_rows):
         for col in range(num_fields_cols):
 
-            # Calculate the boundaries of the current field.
-            # // = Integer Division: no floating point results!
+            # get the boundaries of each cell in px
             y_start = row * height // num_fields_rows
             y_end = (row + 1) * height // num_fields_rows
 
             x_start = col * width // num_fields_cols
             x_end = (col + 1) * width // num_fields_cols
 
-            # Extract the current field from the image.
-            # third dimension (3x color ch) is added automatically
+            # make image of cell boundaries
             field_img = img[y_start:y_end, x_start:x_end]
 
-            # Analyze brightness and color distribution.
+            # get histogram data of each cell
             brightness = analyze_brightness_histogram(field_img, bins)
             color = analyze_color_histogram(field_img, bins)
 
-            # Store the results of the current field.
-            fields.append({
-                "field_id": f"r{row}_c{col}",
-                "row": row,
-                "col": col,
-                "brightness_distribution": brightness,
-                "color_distribution": color
-            })
+            # Store the histogram arrays after one another with decoding info
+            fields.append([
+                brightness,
+                color["red"],
+                color["green"],
+                color["blue"]
+            ])
 
-    return fields, [num_fields_rows, num_fields_cols]
+    return {
+        "grid": [num_fields_rows, num_fields_cols],
+        "bins": bins,
+        "channel_order": ["brightness", "red", "green", "blue"],
+        "fields": fields
+    }
 
 # ==========================================
 # MOVEMENT ANALYSIS
 # ==========================================
 
-def analyze_movement (img_sequence):
+# threshold ändert emfpindlichkeit, ggf anpassen bei höherem gain
+def create_motion_masks(img_sequence, threshold=MOVEMENT_MASK_THRESH_DEF, blur_kernel=(5, 5)):
+
+    # Check if enough images are available for frame differencing.
+    if img_sequence is None or len(img_sequence) < 2:
+        print("[ANALYZER] [ERR] At least 2 images are required.")
+        return []
+
+    motion_masks = []
+
+    for i in range(len(img_sequence) - 1):
+
+        img_a = img_sequence[i]
+        img_b = img_sequence[i + 1]
+
+        # Skip failed camera captures.
+        if img_a is None or img_b is None:
+            print(f"[ANALYZER] [WARN] Skipping image pair {i}-{i+1}: missing image.")
+            continue
+
+        # Check if both images have the same dimensions.
+        if img_a.shape != img_b.shape:
+            print(f"[ANALYZER] [WARN] Skipping image pair {i}-{i+1}: different dimensions.")
+            continue
+
+        # Convert BGR images to grayscale.
+        gray_a = cv2.cvtColor(img_a, cv2.COLOR_BGR2GRAY)
+        gray_b = cv2.cvtColor(img_b, cv2.COLOR_BGR2GRAY)
+
+        # Reduce image noise before calculating differences
+        # kernel = spatial radius of averaging effect for each pixel
+        gray_a = cv2.GaussianBlur(gray_a, blur_kernel, 0)
+        gray_b = cv2.GaussianBlur(gray_b, blur_kernel, 0)
+
+        # Calculate absolute pixel differences between both images.
+        difference = cv2.absdiff(gray_a, gray_b)
+
+        # Keep only pixel differences above the threshold, everything else black
+        _, motion_mask = cv2.threshold(
+            difference,
+            threshold,
+            255,
+            cv2.THRESH_BINARY
+        )
+
+        motion_masks.append(motion_mask)
+
+        print(f"[ANALYZER] Motion mask created for pair {i}-{i+1}.")
+
+    return motion_masks
+
+
+def analyze_movement (img_sequence, step):
+
     return 
 
 # ==========================================
@@ -154,17 +224,61 @@ def detect_objects (img):
     return
 
 if __name__ == "__main__":
-    # test: get last image
-    last_observation = get_observation(2)
-    img_path = last_observation["image_path"] + ".jpg"
 
-    # Load the image.
-    img = cv2.imread(img_path)
+    # ==============================
+    # CAMERA INITIALIZATION
+    # ==============================
 
-    if img is None:
-        raise FileNotFoundError(f"Could not load image: {img_path}")
+    print("[CAMERA] Initializing camera...")
+    camera_device = camera.initialize_camera()
 
-    # Run single-image analysis.
-    analysis = analyze_single_image(img)
-    
-    print(analysis)
+    try:
+
+        # ==============================
+        # CAMERA CALIBRATION
+        # ==============================
+
+        print("[CAMERA] Starting calibration...")
+        calibration = camera.calibrate_gain(camera_device)
+
+        print("[CAMERA] Calibration values:", calibration)
+
+        # ==============================
+        # CAPTURE IMAGE SEQUENCE
+        # ==============================
+
+        print("[CAMERA] Capturing image sequence...")
+
+        frame_sequence, step = camera.capture_n_images(camera_device)
+
+        print(f"[CAMERA] Captured {len(frame_sequence)} images.")
+        print(f"[CAMERA] Step: {step}")
+
+    finally:
+        # Always release the camera after capture.
+        camera_device.release()
+        print("[CAMERA] Camera released.")
+
+    # ==============================
+    # MOVEMENT ANALYSIS TEST
+    # ==============================
+
+    print("[ANALYZER] Creating motion masks...")
+
+    motion_masks = create_motion_masks(frame_sequence)
+
+    # Save masks for visual inspection.
+    os.makedirs("tmp", exist_ok=True)
+
+    for i, mask in enumerate(motion_masks):
+
+        image_path = f"tmp/motion_mask_{i}.jpg"
+
+        success = cv2.imwrite(image_path, mask)
+
+        if success:
+            print(f"[ANALYZER] Saved: {image_path}")
+        else:
+            print(f"[ANALYZER] [ERR] Could not save: {image_path}")
+
+    print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
