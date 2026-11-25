@@ -1,27 +1,21 @@
-'''
-white balance = fixed (4500K)
-exposure = fixed (150ms)
-gain = variable, fixed after calibration
-'''
-
 import subprocess
 import cv2
 import numpy as np
-from filesystem import get_today_date, get_now_timestamp, make_today_folder
 
-DEV = "/dev/video0"
+from config import CAMERA_DEVICE, CAMERA_RES_W, CAMERA_RES_H, CAMERA_FPS, CAMERA_TARGET_BRIGHTNESS_DEF, CAMREA_FIXED_EXPOSURE_DEF, CAMERA_WB_TEMP_DEF, CAMERA_IMG_SEQU_AMT_DEF, CAMERA_IMG_SEQU_STEP_DEF
+
 
 def initialize_camera():
-    camera = cv2.VideoCapture(DEV, cv2.CAP_V4L2)
+    camera = cv2.VideoCapture(CAMERA_DEVICE, cv2.CAP_V4L2)
 
     if not camera.isOpened():
-            print(f"[CAMERA] [ERR] no camera device at {DEV}.")
+            print(f"[CAMERA] [ERR] no camera device at {CAMERA_DEVICE}.")
             camera.release()
             return None
 
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    camera.set(cv2.CAP_PROP_FPS, 30)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_RES_W)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_RES_H)
+    camera.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
 
     print("[CAMERA] successfully initialized.")
     return camera
@@ -32,7 +26,7 @@ def initialize_camera():
 # f = f-string, formatted string, replaces variables directly in the string
 def v4l2_set(**ctrls):
     args = ",".join(f"{k}={v}" for k, v in ctrls.items())
-    subprocess.run(["v4l2-ctl", "-d", DEV, f"--set-ctrl={args}"],
+    subprocess.run(["v4l2-ctl", "-d", CAMERA_DEVICE, f"--set-ctrl={args}"],
                    check=True, capture_output=True)
 
 # measure mean value of brightness in image, taking n_avg samples
@@ -50,7 +44,7 @@ def measure(camera, n_discard=10, n_avg=3):
     return float(np.mean(means)), float(np.mean(clipped))
 
 
-def calibrate_gain(camera, target_mean=120.0, exposure=150, wb_temp=4500,
+def calibrate_gain(camera, target_mean=CAMERA_TARGET_BRIGHTNESS_DEF, exposure=CAMREA_FIXED_EXPOSURE_DEF, wb_temp=CAMERA_WB_TEMP_DEF,
                    gain_min=0, gain_max=64, max_clipped=0.02):
     """
     Locks in exposure and white balance, then uses a binary search to find the gain
@@ -99,13 +93,26 @@ def calibrate_gain(camera, target_mean=120.0, exposure=150, wb_temp=4500,
     if best == gain_max and mean < target_mean - 10:
         print("[CAMERA] [WARN] calibration at maximum gain")
 
-    return {"gain": best, "mean_brightness_gray": mean, "clipped": clipped, "exposure_ms": exposure, "wb_temp_K": wb_temp}
+    # set gain
+    print (f"[CAMERA] setting gain: {best}")
+    v4l2_set(gain=best)
+
+    return {"gain": best, 
+            "mean_brightness_gray": mean, 
+            "target_brightness_gray": target_mean, 
+            "clipped": clipped, 
+            "exposure_ms": exposure, 
+            "wb_temp_K": wb_temp}
 
 def skip_frames (skip_amount=10):
     for _ in range (skip_amount):
         camera.read()
 
-def capture_n_images (camera, img_amount=10, step=1):
+def capture_n_images (camera, img_amount=CAMERA_IMG_SEQU_AMT_DEF, step=CAMERA_IMG_SEQU_STEP_DEF):
+    print ("[CAMERA] skipping frames..")
+    skip_frames()
+
+    print (f"[CAMERA] capturing {img_amount} frames..")
     camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # small buffer allows for most recent frame capture
 
     frames = []
@@ -132,17 +139,7 @@ def capture_n_images (camera, img_amount=10, step=1):
     else:
         print(f"[CAMERA] {img_amount} sequence frames successfully captured.")
 
-    return frames
-
-def save_image_in_archive(frame):
-    filename = str(make_today_folder()) + "/" + get_now_timestamp()
-
-    success = cv2.imwrite(filename + ".jpg", frame)
-
-    if (success):
-        print ("[CAMERA] image saved in archive.")
-    else:
-        print ("[CAMERA] [ERR] error saving image.")
+    return frames, step
 
 
 if __name__ == "__main__":
@@ -151,24 +148,12 @@ if __name__ == "__main__":
 
     # calculate gain
     print ("[CAMERA] starting calibration..")
-    calibration = calibrate_gain(camera, target_mean=120)
+    calibration = calibrate_gain(camera)
     print("[CAMERA] calibration values ", calibration)
-    # SAVE CALIB VALS IN DB
-
-    # set gain
-    print ("[CAMERA] setting gain and skipping frames..")
-    v4l2_set(gain=calibration.get("gain"))
-
-    # skip frames to adjust
-    skip_frames()
 
     # capture n images every x frame
     print ("[CAMERA] capturing frame sequence..")
     frame_sequence = capture_n_images (camera, step=2)
-
-    # save test image last
-    print ("[CAMERA] saving last image..")
-    save_image_in_archive(frame_sequence[-1])
 
     # (kamera setzt hiernach evtl. zurück)
     print ("[CAMERA] done.")
