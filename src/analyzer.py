@@ -10,10 +10,13 @@ from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS
 from database import get_observation
 
 # TODO 
-# tell agent rounding params and params of data
+# tell agent rounding params and params of data, and step value!
+# tell agent coordinate system logic
 # agent has to reverse engineer the id of each cell in spatial analysis
 # movement vector: relative Bewegungsanalyse innerhalb einer Bildsequenz!
 # save ephemeral images (movement: masks, bounding boxes / edges,  )
+# delete motion regions (boxes) that are completely inside other boxes
+# SAVE MOTION MASKS AND REGIONS AS JPG
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -290,7 +293,10 @@ def find_motion_regions(
 
     return all_regions
 
-# optical flow: only the boxes of regions, only the white pixels of mask
+# OPTICAL FLOW: only the boxes of regions, only the white pixels of mask
+# returns an array for each image comparison (mask) and all its bounding boxes
+# NOT an object tracking, as the same object probably shows up in both arrays
+# as it is likely still in the second comparison
 def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
 
     all_vectors = []
@@ -336,16 +342,16 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
             # flow[row, col, 0] = dx of this pixel, flow[row, col, 1] = dy.
             # The numbers are common default values for this function.
             flow = cv2.calcOpticalFlowFarneback(
-                crop_a, 
-                crop_b, 
-                None,
-                0.5,  # pyramid scale
-                3,    # pyramid levels (helps with bigger movements)
-                15,   # window size (bigger = smoother, less detail)
-                3,    # iterations
-                5, 
-                1.2, 
-                0
+                crop_a, # prev img
+                crop_b, # curr img
+                None,   # target array or None for new array
+                0.5,    # pyramid scale, halved in every step
+                3,      # pyramid levels (higher val helps with bigger movements)
+                15,     # window size (bigger = smoother, but less details)
+                3,      # iterations per pyramid level
+                5,      # Größe der Pixel-Nachbarschaft für die Polynom-Approximation
+                1.2,    # Standardabweichung des Gauß-Filters
+                0.      # Steuer-Flags (0 = None)
             )
             # print ("flow result:" , flow)
 
@@ -367,12 +373,13 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
             angle = math.degrees(math.atan2(dy, dx))
 
             pair_vectors.append({
-                "bbox": region["bbox"],
+                "flow_analysis_frame_pair": i,
+                "bounding_box": region["bbox"],
                 "vector": {
-                    "dx": round(dx, 2),
-                    "dy": round(dy, 2),
-                    "magnitude": round(magnitude, 2),
-                    "angle": round(angle, 1)
+                    "dx_px": round(dx, 2),
+                    "dy_px": round(dy, 2),
+                    "magnitude_px": round(magnitude, 2),
+                    "angle_deg": round(angle, 1)
                 }
             })
 
@@ -382,12 +389,22 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
     return all_vectors
 
 
+def analyze_movement (img_sequence):
+    print ("[ANALYZER] creating motion masks..")
+    create_motion_masks(img_sequence)
+
+    print ("[ANALYZER] calculating motion regions..")
+    motion_regions = find_motion_regions(motion_masks)
+    print ("[ANALYZER] motion regions: ", motion_regions)
+
+    print ("[ANALYZER] calculating motion vectors..")
+    motion_analysis = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
+    print ("[ANALYZER] motion analysis: ", motion_analysis)
+
+    return motion_analysis
 
 
-def analyze_movement (img_sequence, step):
-
-    return 
-
+    
 # ==========================================
 # OBJECT DETECTION
 # ==========================================
@@ -435,55 +452,56 @@ if __name__ == "__main__":
     # MOVEMENT ANALYSIS TEST
     # ==============================
 
-    print("[ANALYZER] Creating motion masks...")
+    analyze_movement (frame_sequence)
 
-    motion_masks = create_motion_masks(frame_sequence)
-    # print ("motion masks: ", motion_masks)  
+    # motion_masks = create_motion_masks(frame_sequence)
+    # # print ("motion masks: ", motion_masks)  
 
-    motion_regions = find_motion_regions(motion_masks)
-    print ("motion regions: ", motion_regions)
+    # motion_regions = find_motion_regions(motion_masks)
+    # print ("motion regions: ", motion_regions)
 
-    motion_vectors = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
-    print("motion vectors: ", motion_vectors)
+    # motion_vectors = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
+    # print("motion vectors: ", motion_vectors)
 
     # string for filename
     now_time_string = get_now_timestamp()
 
     # if motion_regions are not empty like [[],[]]
-    if any(motion_regions):
-        # save motion masks
-        for i, mask in enumerate(motion_masks):
-            image_path = f"img-tst/motion_mask_{now_time_string}_{i}.jpg"
-            print (image_path)
+    # TODO
+    # if any(motion_regions):
+    #     # save motion masks
+    #     for i, mask in enumerate(motion_masks):
+    #         image_path = f"img-tst/motion_mask_{now_time_string}_{i}.jpg"
+    #         print (image_path)
 
-            success = cv2.imwrite(image_path, mask)
+    #         success = cv2.imwrite(image_path, mask)
 
-            if success:
-                print(f"[ANALYZER] Saved: {image_path}")
-            else:
-                print(f"[ANALYZER] [ERR] Could not save: {image_path}")
+    #         if success:
+    #             print(f"[ANALYZER] Saved: {image_path}")
+    #         else:
+    #             print(f"[ANALYZER] [ERR] Could not save: {image_path}")
 
-        print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
+    #     print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
 
-        # save og-imgs with bounding box of detected regions
-        for i, regions in enumerate(motion_regions):
+    #     # save og-imgs with bounding box of detected regions
+    #     for i, regions in enumerate(motion_regions):
 
-            img = frame_sequence[i].copy()
+    #         img = frame_sequence[i].copy()
 
-            for region in regions:
+    #         for region in regions:
 
-                x, y, width, height = region["bbox"]
+    #             x, y, width, height = region["bbox"]
 
-                cv2.rectangle(
-                    img,
-                    (x, y),
-                    (x + width, y + height),
-                    (255,255,255),
-                    1
-                )
+    #             cv2.rectangle(
+    #                 img,
+    #                 (x, y),
+    #                 (x + width, y + height),
+    #                 (255,255,255),
+    #                 1
+    #             )
 
-            image_path = f"img-tst/motion_bbox_{now_time_string}_{i}.jpg"
+    #         image_path = f"img-tst/motion_bbox_{now_time_string}_{i}.jpg"
 
-            cv2.imwrite(image_path, img)
+    #         cv2.imwrite(image_path, img)
 
-            print(f"[ANALYZER] Saved: {image_path}")
+    #         print(f"[ANALYZER] Saved: {image_path}")
