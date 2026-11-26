@@ -2,21 +2,22 @@ import cv2
 import numpy as np
 import math
 
+from filesystem import save_image_in_archive
+from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF, MOTION_MASK_MERGE_DISTANCE_DEF, MIN_PX_MOTION_THRESH_DEF
 
+# for testing
 import camera
-from filesystem import get_now_timestamp
-
-from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF, MOTION_MASK_MERGE_DISTANCE_DEF
-from database import get_observation
 
 # TODO 
+# ? delete motion regions (boxes) that are completely inside other boxes
+
+# TOTELL
 # tell agent rounding params and params of data, and step value!
 # tell agent coordinate system logic
 # agent has to reverse engineer the id of each cell in spatial analysis
 # movement vector: relative Bewegungsanalyse innerhalb einer Bildsequenz!
-# save ephemeral images (movement: masks, bounding boxes / edges,  )
-# delete motion regions (boxes) that are completely inside other boxes
-# SAVE MOTION MASKS AND REGIONS AS JPG
+# bbox_motion_pixel_count ist keine Objektgröße, sondern die Anzahl der als bewegt erkannten Pixel innerhalb einer Bounding Box. Das sollte in der späteren Agent-Dokumentation klar definiert sein.
+# Für die Spatial Analysis würde ich die Zuordnung der 16 Felder zu den Rasterpositionen explizit dokumentieren (beispielsweise zeilenweise von links oben nach rechts unten).
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -351,21 +352,32 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
                 3,      # iterations per pyramid level
                 5,      # Größe der Pixel-Nachbarschaft für die Polynom-Approximation
                 1.2,    # Standardabweichung des Gauß-Filters
-                0.      # Steuer-Flags (0 = None)
+                0       # Steuer-Flags (0 = None)
             )
             # print ("flow result:" , flow)
 
-            # get every pixel that is white in the motion mask
+            # get every pixel that is white in the motion mask (boolean array)
             moving = crop_mask > 0
 
-            # Too few moving pixels = no reliable result
+            motion_pixel_count = int(np.count_nonzero(moving))
+
+            # Too few moving pixels = no reliable result in angles
             # helps agains noise / filters out small areas
-            # if np.count_nonzero(moving) < 20:
-            #     continue
+            if motion_pixel_count < MIN_PX_MOTION_THRESH_DEF:
+                continue
 
             # Mean of dx and dy over the moving pixels only
-            dx = float(np.mean(flow[:, :, 0][moving]))
-            dy = float(np.mean(flow[:, :, 1][moving]))
+            # dx = float(np.mean(flow[:, :, 0][moving]))
+            # dy = float(np.mean(flow[:, :, 1][moving]))
+
+            # Get flow values only from the og-img pixels detected as motion.
+            dx_values = flow[:, :, 0][moving]
+            dy_values = flow[:, :, 1][moving]
+
+            # median instead of mean: the middle position of sorted values
+            # higher values do not disturb the result as in mean value
+            dx = float(np.median(dx_values))
+            dy = float(np.median(dy_values))
 
             # Length of the arrow (Pythagoras) and its direction in degrees.
             # The y-axis of an image points DOWN, so a negative angle = moving up.
@@ -375,6 +387,7 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
             pair_vectors.append({
                 "flow_analysis_frame_pair": i,
                 "bounding_box": region["bbox"],
+                "bbox_motion_pixel_count": motion_pixel_count,
                 "vector": {
                     "dx_px": round(dx, 2),
                     "dy_px": round(dy, 2),
@@ -389,20 +402,46 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
     return all_vectors
 
 
-def analyze_movement (img_sequence):
+def analyze_movement (frame_sequence, save_masks=False, save_regions=False):
     print ("[ANALYZER] creating motion masks..")
-    create_motion_masks(img_sequence)
+    motion_masks = create_motion_masks(frame_sequence)
 
     print ("[ANALYZER] calculating motion regions..")
     motion_regions = find_motion_regions(motion_masks)
-    print ("[ANALYZER] motion regions: ", motion_regions)
+    # print ("[ANALYZER] motion regions: ", motion_regions)
 
     print ("[ANALYZER] calculating motion vectors..")
     motion_analysis = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
-    print ("[ANALYZER] motion analysis: ", motion_analysis)
+    # print ("[ANALYZER] motion analysis: ", motion_analysis)
+
+    if not any(motion_regions): 
+        return motion_analysis
+
+    if save_masks:
+        for i, mask in enumerate(motion_masks):
+            print (f"[ANALYZER] saving motion mask {i} in archive.")
+            save_image_in_archive(mask ,f"mask_{i}")
+
+    if save_regions:
+        for i, regions in enumerate(motion_regions):
+            img = frame_sequence[i].copy()
+
+            for region in regions:
+
+                x, y, width, height = region["bbox"]
+
+                cv2.rectangle(
+                    img,
+                    (x, y),
+                    (x + width, y + height),
+                    (255,255,255),
+                    1
+                )
+
+            print (f"[ANALYZER] saving motion regions {i} in archive.")
+            save_image_in_archive (img, f"_motion_regions_{i}")
 
     return motion_analysis
-
 
     
 # ==========================================
@@ -452,56 +491,4 @@ if __name__ == "__main__":
     # MOVEMENT ANALYSIS TEST
     # ==============================
 
-    analyze_movement (frame_sequence)
-
-    # motion_masks = create_motion_masks(frame_sequence)
-    # # print ("motion masks: ", motion_masks)  
-
-    # motion_regions = find_motion_regions(motion_masks)
-    # print ("motion regions: ", motion_regions)
-
-    # motion_vectors = calculate_region_vectors(frame_sequence, motion_masks, motion_regions)
-    # print("motion vectors: ", motion_vectors)
-
-    # string for filename
-    now_time_string = get_now_timestamp()
-
-    # if motion_regions are not empty like [[],[]]
-    # TODO
-    # if any(motion_regions):
-    #     # save motion masks
-    #     for i, mask in enumerate(motion_masks):
-    #         image_path = f"img-tst/motion_mask_{now_time_string}_{i}.jpg"
-    #         print (image_path)
-
-    #         success = cv2.imwrite(image_path, mask)
-
-    #         if success:
-    #             print(f"[ANALYZER] Saved: {image_path}")
-    #         else:
-    #             print(f"[ANALYZER] [ERR] Could not save: {image_path}")
-
-    #     print(f"[ANALYZER] {len(motion_masks)} motion masks created.")
-
-    #     # save og-imgs with bounding box of detected regions
-    #     for i, regions in enumerate(motion_regions):
-
-    #         img = frame_sequence[i].copy()
-
-    #         for region in regions:
-
-    #             x, y, width, height = region["bbox"]
-
-    #             cv2.rectangle(
-    #                 img,
-    #                 (x, y),
-    #                 (x + width, y + height),
-    #                 (255,255,255),
-    #                 1
-    #             )
-
-    #         image_path = f"img-tst/motion_bbox_{now_time_string}_{i}.jpg"
-
-    #         cv2.imwrite(image_path, img)
-
-    #         print(f"[ANALYZER] Saved: {image_path}")
+    movement_data = analyze_movement (frame_sequence, True, True)

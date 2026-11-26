@@ -17,10 +17,10 @@ def make_today_folder():
     folder.mkdir(parents=True,exist_ok=True)
     return folder
 
-def save_image_in_archive(frame):
+def save_image_in_archive(frame, filename_add_on=""):
     filename = str(make_today_folder()) + "/" + get_now_timestamp()
 
-    success = cv2.imwrite(filename + ".jpg", frame)
+    success = cv2.imwrite(filename + filename_add_on + ".jpg", frame)
 
     if (success):
         print ("[FILE SYSTEM] image saved in archive.")

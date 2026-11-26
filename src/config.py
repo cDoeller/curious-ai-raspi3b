@@ -20,3 +20,4 @@ HISTORGAM_ROUND_DECIMALS = 4 # rounding floats in histograms after decimal point
 MOVEMENT_MASK_THRESH_DEF = 25 # delta thresh between pixels in frame differencing
 MOTION_MASK_MIN_AREA_DEF = 500 # the minimum area of motion area that will be seen as movement
 MOTION_MASK_MERGE_DISTANCE_DEF = 20 # dilate; gaps in px that will be fused with other areas of mask
+MIN_PX_MOTION_THRESH_DEF = 20 # minimum of counted pixels in movement area for o-flow calc

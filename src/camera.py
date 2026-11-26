@@ -104,7 +104,11 @@ def calibrate_gain(camera, target_mean=CAMERA_TARGET_BRIGHTNESS_DEF, exposure=CA
             "target_brightness_gray": target_mean, 
             "clipped": clipped, 
             "exposure_ms": exposure, 
-            "wb_temp_K": wb_temp}
+            "wb_temp_K": wb_temp,
+            "resolution_w": CAMERA_RES_W,
+            "resolution_h": CAMERA_RES_H,
+            "fps": CAMERA_FPS,
+            }
 
 def skip_frames (camera, skip_amount=10):
     for _ in range (skip_amount):
