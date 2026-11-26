@@ -3,6 +3,7 @@
 /img-tst/
 /data/
 /tmp/
+/models/
 
 .venv/
 .DS_Store
