@@ -28,7 +28,7 @@ MIN_PX_MOTION_THRESH_DEF = 20 # minimum of counted pixels in movement area for o
 # object detection
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "mobilenet_ssd" / "ssd-mobilenet-v2.onnx"
 LABEL_PATH = Path(__file__).resolve().parent.parent / "models" / "mobilenet_ssd" / "mscoco_label_map.pbtxt"
-CONFIDENCE_THRESHOLD = 0.245
-NMS_THRESHOLD = 0.45
+CONFIDENCE_THRESHOLD = 0.4 # lower: more objects classified as detections
+NMS_THRESHOLD = 0.3 # higher: more overlapping boxes remain, lower - more are deleted
 FEATURE_MAPS = [19, 10, 5, 3, 2, 1]
 SCALES  = np.linspace(0.2, 0.95, 6)

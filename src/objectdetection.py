@@ -1,15 +1,13 @@
 import cv2
 import numpy as np
 import re
+from filesystem import save_image_in_archive
 
 from config import (
     MODEL_PATH, LABEL_PATH,
     CONFIDENCE_THRESHOLD, NMS_THRESHOLD,
     FEATURE_MAPS, SCALES
 )
-
-# testing
-from filesystem import save_image_in_archive
 
 # DETECTION PIPELINE (SSD MobileNet v2)
 #
@@ -358,7 +356,8 @@ def detect_objects(img, save_detected_img=False):
         )
 
     if save_detected_img:
-        draw_detections(img, detections)
+        detection_img = draw_detections(img, detections)
+        save_image_in_archive(detection_img, "_detections")
 
     return detections
 
