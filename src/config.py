@@ -1,3 +1,5 @@
+import numpy as np
+
 # camera
 CAMERA_DEVICE = "/dev/video0"
 CAMERA_RES_W = 1280
@@ -21,3 +23,11 @@ MOVEMENT_MASK_THRESH_DEF = 25 # delta thresh between pixels in frame differencin
 MOTION_MASK_MIN_AREA_DEF = 500 # the minimum area of motion area that will be seen as movement
 MOTION_MASK_MERGE_DISTANCE_DEF = 20 # dilate; gaps in px that will be fused with other areas of mask
 MIN_PX_MOTION_THRESH_DEF = 20 # minimum of counted pixels in movement area for o-flow calc
+
+# object detection
+MODEL_PATH = "../models/mobilenet_ssd/ssd-mobilenet-v2.onnx" # path of 
+LABEL_PATH = "../models/mobilenet_ssd/mscoco_label_map.pbtxt"
+CONFIDENCE_THRESHOLD = 0.245
+NMS_THRESHOLD = 0.45
+FEATURE_MAPS = [19, 10, 5, 3, 2, 1]
+SCALES  = np.linspace(0.2, 0.95, 6)

@@ -443,14 +443,6 @@ def analyze_movement (frame_sequence, save_masks=False, save_regions=False):
 
     return motion_analysis
 
-    
-# ==========================================
-# OBJECT DETECTION
-# ==========================================
-
-def detect_objects (img):
-    return
-
 if __name__ == "__main__":
 
     # ==============================
