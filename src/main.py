@@ -76,8 +76,8 @@ if __name__ == "__main__":
     error=None,
     timestamp=None)
 
-    #retrieve observation from db
-    print ("\n[DATABASE] retrieving observation from DB..")
+    # #retrieve observation from db
+    # print ("\n[DATABASE] retrieving observation from DB..")
 
-    retrieved_observation = get_observation(last_observation["observation_id"])
-    print (retrieved_observation)
+    # retrieved_observation = get_observation(last_observation["observation_id"])
+    # print (retrieved_observation)
