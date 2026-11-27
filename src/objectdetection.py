@@ -8,6 +8,9 @@ from config import (
     FEATURE_MAPS, SCALES
 )
 
+# testing
+from filesystem import save_image_in_archive
+
 # DETECTION PIPELINE (SSD MobileNet v2)
 #
 # ONCE AT START
@@ -307,7 +310,7 @@ def filter_and_nms(boxes, scores, width, height):
 # MAIN FUNCTION 
 # ==========================================
 
-def detect_objects(img):
+def detect_objects(img, save_detected_img=False):
     if img is None:
         print("[OBJECT DETECTION] [ERR] No image given.")
         return []
@@ -354,6 +357,9 @@ def detect_objects(img):
             detection["bounding_box"]
         )
 
+    if save_detected_img:
+        draw_detections(img, detections)
+
     return detections
 
 
@@ -395,3 +401,19 @@ def draw_detections(img, detections):
         )
 
     return detection_img
+
+
+# MAIN TESTS
+if __name__ == "__main__":
+    image_path = "img-tst/test-1280x720-afternoon.jpg"
+
+    img = cv2.imread(image_path)
+    
+    if img is None:
+        raise FileNotFoundError(image_path)
+
+    detections = detect_objects(img)
+    print ("detections: ", detections)
+
+    detected_img = draw_detections(img, detections)
+    save_image_in_archive(detected_img, "_detection_test")
