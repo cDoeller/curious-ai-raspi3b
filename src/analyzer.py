@@ -18,6 +18,7 @@ import camera
 
 # TODO 
 # Changes (compare to previous observation image)
+# edge density
 
 # vor dem senden histogramme aus fields entfernen
 # for field in obs["analysis"]["spatial_analysis"]["fields"]:
@@ -89,6 +90,14 @@ def analyze_entropy(img):
     entropy = -np.sum(probabilities * np.log2(probabilities))
 
     return float(entropy)
+
+def analyze_edge_density(img):
+    # Blur first so sensor noise is not counted as edges.
+    gray = cv2.GaussianBlur(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+    # Canny marks edge pixels white; thresholds 50/150 are common starting values.
+    edges = cv2.Canny(gray, 50, 150)
+    # Share of edge pixels (0 = flat image, higher = more detail).
+    return float(np.count_nonzero(edges) / edges.size)
 
 def analyze_color_histogram(img, bins):
     # Convert BGR to RGB for clearly named color channels.
