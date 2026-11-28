@@ -17,14 +17,13 @@ from config import (HISTOGRAM_OVERALL_BINS_DEF,
 import camera
 
 # TODO 
-# 16 Zellen x 4 Histogramme x 8 Werte sind 512 Zahlen, 
-# der größte Teil deiner Daten. Ein Sprachmodell kann 
-# daraus kaum etwas ableiten, und die Zellen sind nur 
-# eine flache Liste ohne Position. Besser: pro Zelle 
-# ein paar Kennzahlen (mittlere Helligkeit, dominante 
-# Farbe, Kontrast) und eine Positionsangabe (row, col 
-# oder "top-left"). Die Histogramme bleiben in der 
-# Datenbank.
+# Changes (compare to previous observation image)
+
+# vor dem senden histogramme aus fields entfernen
+# for field in obs["analysis"]["spatial_analysis"]["fields"]:
+#     for key in ("brightness_histogram", "red_histogram", "green_histogram", "blue_histogram"):
+#         field.pop(key, None)
+# obs["analysis"]["spatial_analysis"].pop("bins", None)
 
 # TOTELL
 # tell agent rounding params and params of data, and step value!
@@ -190,6 +189,7 @@ def analyze_n_fields(
 
     return {
         "grid": [num_fields_rows, num_fields_cols],
+        "cell_order": "row by row, from top-left to bottom-right",
         "bins": bins,
         "fields": fields
     }

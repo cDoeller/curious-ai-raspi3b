@@ -25,12 +25,12 @@ FIELDS_COLS_DEF = 4 # cols of spatial analysis
 MOVEMENT_MASK_THRESH_DEF = 25 # delta thresh between pixels in frame differencing
 MOTION_MASK_MIN_AREA_DEF = 500 # the minimum area of motion area that will be seen as movement
 MOTION_MASK_MERGE_DISTANCE_DEF = 20 # dilate; gaps in px that will be fused with other areas of mask
-MIN_PX_MOTION_THRESH_DEF = 20 # minimum of counted pixels in movement area for o-flow calc
+MIN_PX_MOTION_THRESH_DEF = 80 # minimum of counted pixels in movement area for o-flow calc
 
 # object detection
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "mobilenet_ssd" / "ssd-mobilenet-v2.onnx"
 LABEL_PATH = Path(__file__).resolve().parent.parent / "models" / "mobilenet_ssd" / "mscoco_label_map.pbtxt"
-CONFIDENCE_THRESHOLD = 0.4 # lower: more objects classified as detections
-NMS_THRESHOLD = 0.3 # higher: more overlapping boxes remain, lower - more are deleted
+CONFIDENCE_THRESHOLD = 0.3 # lower: more objects classified as detections
+NMS_THRESHOLD = 0.15 # higher: more overlapping boxes remain, lower - more are deleted
 FEATURE_MAPS = [19, 10, 5, 3, 2, 1]
 SCALES  = np.linspace(0.2, 0.95, 6)

@@ -112,7 +112,7 @@ def calibrate_gain(camera, target_mean=CAMERA_TARGET_BRIGHTNESS_DEF, exposure=CA
             "mean_brightness_gray": round(mean, ROUND_DECIMALS), 
             "target_brightness_gray": target_mean, 
             "clipped": round (clipped, ROUND_DECIMALS),
-            "exposure_ms": exposure/100, 
+            "exposure_ms": exposure/10, 
             "wb_temp_K": wb_temp,
             "resolution_w": CAMERA_RES_W,
             "resolution_h": CAMERA_RES_H,
