@@ -2,7 +2,16 @@ import subprocess
 import cv2
 import numpy as np
 
-from config import CAMERA_DEVICE, CAMERA_RES_W, CAMERA_RES_H, CAMERA_FPS, CAMERA_TARGET_BRIGHTNESS_DEF, CAMREA_FIXED_EXPOSURE_DEF, CAMERA_WB_TEMP_DEF, CAMERA_IMG_SEQU_AMT_DEF, CAMERA_IMG_SEQU_STEP_DEF
+from config import (CAMERA_DEVICE, 
+                    CAMERA_RES_W, 
+                    CAMERA_RES_H, 
+                    CAMERA_FPS, 
+                    CAMERA_TARGET_BRIGHTNESS_DEF, 
+                    CAMREA_FIXED_EXPOSURE_DEF, 
+                    CAMERA_WB_TEMP_DEF, 
+                    CAMERA_IMG_SEQU_AMT_DEF, 
+                    CAMERA_IMG_SEQU_STEP_DEF, 
+                    ROUND_DECIMALS)
 
 # TODO Calibration not working properly when sunlight strong. 
 # maybe auto exposure enable and save vals, then change analysis blur based on vals?
@@ -100,10 +109,10 @@ def calibrate_gain(camera, target_mean=CAMERA_TARGET_BRIGHTNESS_DEF, exposure=CA
     v4l2_set(gain=best)
 
     return {"gain": best, 
-            "mean_brightness_gray": mean, 
+            "mean_brightness_gray": round(mean, ROUND_DECIMALS), 
             "target_brightness_gray": target_mean, 
-            "clipped": clipped, 
-            "exposure_ms": exposure, 
+            "clipped": round (clipped, ROUND_DECIMALS),
+            "exposure_ms": exposure/100, 
             "wb_temp_K": wb_temp,
             "resolution_w": CAMERA_RES_W,
             "resolution_h": CAMERA_RES_H,

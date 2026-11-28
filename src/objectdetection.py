@@ -6,7 +6,7 @@ from filesystem import save_image_in_archive
 from config import (
     MODEL_PATH, LABEL_PATH,
     CONFIDENCE_THRESHOLD, NMS_THRESHOLD,
-    FEATURE_MAPS, SCALES
+    FEATURE_MAPS, SCALES, ROUND_DECIMALS
 )
 
 # DETECTION PIPELINE (SSD MobileNet v2)
@@ -236,7 +236,7 @@ def to_probabilities(class_predictions):
     for class_id in top_indices:
         print(
             labels.get(class_id, f"class_{class_id}"),
-            round(float(scores[:, class_id].max()), 4)
+            round(float(scores[:, class_id].max()), ROUND_DECIMALS)
         )
 
     return scores
@@ -297,7 +297,7 @@ def filter_and_nms(boxes, scores, width, height):
             detections.append({
                 "label": labels.get(class_id, f"class_{class_id}"),
                 "class_id": class_id,
-                "score": float(class_scores[box_index]),
+                "score": round(float(class_scores[box_index]), ROUND_DECIMALS),
                 "bounding_box": pixel_boxes[index]
             })
 

@@ -3,13 +3,28 @@ import numpy as np
 import math
 
 from filesystem import save_image_in_archive
-from config import HISTOGRAM_OVERALL_BINS_DEF, HISTOGRAM_FIELDS_BINS_DEF, FIELDS_ROWS_DEF, FIELDS_COLS_DEF, HISTORGAM_ROUND_DECIMALS, MOVEMENT_MASK_THRESH_DEF, MOTION_MASK_MIN_AREA_DEF, MOTION_MASK_MERGE_DISTANCE_DEF, MIN_PX_MOTION_THRESH_DEF
+from config import (HISTOGRAM_OVERALL_BINS_DEF, 
+                    HISTOGRAM_FIELDS_BINS_DEF, 
+                    FIELDS_ROWS_DEF, 
+                    FIELDS_COLS_DEF, 
+                    ROUND_DECIMALS, 
+                    MOVEMENT_MASK_THRESH_DEF, 
+                    MOTION_MASK_MIN_AREA_DEF, 
+                    MOTION_MASK_MERGE_DISTANCE_DEF, 
+                    MIN_PX_MOTION_THRESH_DEF)
 
 # for testing
 import camera
 
 # TODO 
-# ? delete motion regions (boxes) that are completely inside other boxes
+# 16 Zellen x 4 Histogramme x 8 Werte sind 512 Zahlen, 
+# der größte Teil deiner Daten. Ein Sprachmodell kann 
+# daraus kaum etwas ableiten, und die Zellen sind nur 
+# eine flache Liste ohne Position. Besser: pro Zelle 
+# ein paar Kennzahlen (mittlere Helligkeit, dominante 
+# Farbe, Kontrast) und eine Positionsangabe (row, col 
+# oder "top-left"). Die Histogramme bleiben in der 
+# Datenbank.
 
 # TOTELL
 # tell agent rounding params and params of data, and step value!
@@ -18,12 +33,14 @@ import camera
 # movement vector: relative Bewegungsanalyse innerhalb einer Bildsequenz!
 # bbox_motion_pixel_count ist keine Objektgröße, sondern die Anzahl der als bewegt erkannten Pixel innerhalb einer Bounding Box. Das sollte in der späteren Agent-Dokumentation klar definiert sein.
 # Für die Spatial Analysis würde ich die Zuordnung der 16 Felder zu den Rasterpositionen explizit dokumentieren (beispielsweise zeilenweise von links oben nach rechts unten).
+# Objekte: Modell, Schwellenwerte
+# Achsen, Zellreihenfolge, Rundung
 
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
 
-def round_histogram(histogram, decimals=HISTORGAM_ROUND_DECIMALS):
+def round_histogram(histogram, decimals=ROUND_DECIMALS):
     return [round(float(value), decimals) for value in histogram]
 
 # ==========================================
@@ -107,8 +124,8 @@ def analyze_brightness_histogram(img, bins):
 def analyze_single_image(img, histogram_bins=HISTOGRAM_OVERALL_BINS_DEF):
     # Collect all single-image analysis results.
     analysis = {
-        "saturation_normalized": analyze_saturation(img),
-        "entropy_shannon_bits": analyze_entropy(img),
+        "saturation_normalized": round(analyze_saturation(img), ROUND_DECIMALS),
+        "entropy_shannon_bits": round(analyze_entropy(img), ROUND_DECIMALS),
         f"color_histogram_{histogram_bins}_bins_probabilities": analyze_color_histogram(img, histogram_bins),
         f"brightness_histogram_{histogram_bins}_bins_probabilities": analyze_brightness_histogram(img, histogram_bins)
     }
@@ -145,22 +162,35 @@ def analyze_n_fields(
             # make image of cell boundaries
             field_img = img[y_start:y_end, x_start:x_end]
 
+            gray_img = cv2.cvtColor(field_img, cv2.COLOR_BGR2GRAY)
+
+            # mean = avg brightness 0-255
+            # std = how much birghtness varies (low = more flat)
+            mean_brightness = float(gray_img.mean())
+            contrast = float(gray_img.std())
+
+            b_mean, g_mean, r_mean, _ = cv2.mean(field_img)
+
             # get histogram data of each cell
             brightness = analyze_brightness_histogram(field_img, bins)
             color = analyze_color_histogram(field_img, bins)
 
             # Store the histogram arrays after one another with decoding info
-            fields.append([
-                brightness,
-                color["red"],
-                color["green"],
-                color["blue"]
-            ])
+            fields.append({
+                "row": row,
+                "col": col,
+                "brightness_histogram": brightness,
+                "red_histogram": color["red"],
+                "green_histogram": color["green"],
+                "blue_histogram": color["blue"],
+                "mean_brightness_gray_0_255": round (mean_brightness, ROUND_DECIMALS),
+                "average_rgb_0_255": [int(round(r_mean)), int(round(g_mean)), int(round(b_mean))],
+                "contrast_std_gray_0_255": round (contrast, ROUND_DECIMALS)
+            })
 
     return {
         "grid": [num_fields_rows, num_fields_cols],
         "bins": bins,
-        "channel_order": ["brightness", "red", "green", "blue"],
         "fields": fields
     }
 
@@ -387,7 +417,7 @@ def calculate_region_vectors(img_sequence, motion_masks, motion_regions):
             pair_vectors.append({
                 "flow_analysis_frame_pair": i,
                 "bounding_box": region["bbox"],
-                "bbox_motion_pixel_count": motion_pixel_count,
+                "bounding_box_motion_pixels": motion_pixel_count,
                 "vector": {
                     "dx_px": round(dx, 2),
                     "dy_px": round(dy, 2),

@@ -28,7 +28,8 @@ if __name__ == "__main__":
     last_image = frame_sequence[-1]
 
     # add step to camera data
-    camera_settings["frame_interval_sequence"] = step
+    camera_settings["frame_step"] = step
+    camera_settings["frame_sequence_length"] = len(frame_sequence)
 
     print ("[CAMERA] done.")
     camera_device.release()

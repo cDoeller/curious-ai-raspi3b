@@ -1,6 +1,9 @@
 import numpy as np
 from pathlib import Path
 
+# general
+ROUND_DECIMALS = 4 # rounding floats after decimal point
+
 # camera
 CAMERA_DEVICE = "/dev/video0"
 CAMERA_RES_W = 1280
@@ -14,11 +17,10 @@ CAMERA_IMG_SEQU_STEP_DEF = 1 # skipped images in sequence at 30 FPS
 
 # analyzer
 # numerical analysis
-HISTOGRAM_OVERALL_BINS_DEF = 16 # amount of histogram bins in overall analysis
+HISTOGRAM_OVERALL_BINS_DEF = 32 # amount of histogram bins in overall analysis
 HISTOGRAM_FIELDS_BINS_DEF = 8 # amount of histogram bins in spatial analysos
 FIELDS_ROWS_DEF = 4 # rows of spatial analysis
 FIELDS_COLS_DEF = 4 # cols of spatial analysis
-HISTORGAM_ROUND_DECIMALS = 4 # rounding floats in histograms after decimal point
 # motion analysis
 MOVEMENT_MASK_THRESH_DEF = 25 # delta thresh between pixels in frame differencing
 MOTION_MASK_MIN_AREA_DEF = 500 # the minimum area of motion area that will be seen as movement
